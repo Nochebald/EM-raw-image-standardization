@@ -8,6 +8,31 @@ try:
 except ImportError:
     HAS_OPENCV = False
 
+# ==============================================================================
+# ========================== GLOBAL CONFIGURATION ==============================
+# ==============================================================================
+
+# --- Memory Management ---
+# Set to True to load all slices (exact statistics, high memory)
+# Set to False to use sampling (approximate statistics, low memory)
+USE_EXACT_STATISTICS = False  # Change to True for small stacks
+MAX_SLICES_FOR_EXACT = 100    # Auto-switch to exact mode if stack is small
+
+# --- Filter & Enhancement Parameters ---
+# Grid size for local contrast (CLAHE). Increase for larger structural variations.
+CLAHE_GRID_SIZE = (8, 8)
+
+# Sharpening matrix (Kernel). Applied to enhance organelle membranes.
+# Note: The matrix should sum to 1.0 to preserve overall image brightness.
+# Default is a 3x3 kernel with a center strength of 5.0.
+SHARPEN_KERNEL = np.array([
+    [-0.5, -0.5, -0.5],
+    [-0.5,  5.0, -0.5],
+    [-0.5, -0.5, -0.5]
+], dtype=np.float32)
+
+# ==============================================================================
+
 
 def denoise_image(image):
     """
@@ -44,8 +69,8 @@ def apply_clahe(image):
     Apply CLAHE for local contrast enhancement
     """
     if HAS_OPENCV:
-        # OpenCV CLAHE - optimal settings for EM images
-        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        # OpenCV CLAHE - optimal settings for EM images, utilizing global grid size
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=CLAHE_GRID_SIZE)
         enhanced = clahe.apply(image)
         return enhanced
     else:
@@ -72,12 +97,6 @@ z_start, z_end = bounds.z1, bounds.z2
 width = x_end - x_start
 height = y_end - y_start
 
-# ===== CONFIGURATION =====
-# Set to True to load all slices (exact statistics, high memory)
-# Set to False to use sampling (approximate statistics, low memory)
-USE_EXACT_STATISTICS = False  # Change to True for small stacks
-MAX_SLICES_FOR_EXACT = 100  # Auto-switch to exact mode if stack is small
-# ==========================
 
 # FIRST PASS: Calculate global statistics
 z = z_start
@@ -101,7 +120,7 @@ while True:
 use_exact = USE_EXACT_STATISTICS or (slice_count <= MAX_SLICES_FOR_EXACT)
 
 if use_exact:
-    # EXACT METHOD: Load all slices (same as original script)
+    # EXACT METHOD: Load all slices
     all_slices = []
     z = z_start
     
@@ -214,11 +233,8 @@ while True:
     
     # ===== STEP 5: FINAL SHARPENING (optional but helpful) =====
     if HAS_OPENCV:
-        # Mild sharpening to make structures pop
-        kernel_sharpen = np.array([[-0.5, -0.5, -0.5],
-                                   [-0.5,  5.0, -0.5],
-                                   [-0.5, -0.5, -0.5]])
-        sharpened = cv2.filter2D(inverted, -1, kernel_sharpen)
+        # Mild sharpening utilizing the global SHARPEN_KERNEL
+        sharpened = cv2.filter2D(inverted, -1, SHARPEN_KERNEL)
         final_output = np.clip(sharpened, 0, 255).astype(np.uint8)
     else:
         final_output = inverted
